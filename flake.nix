@@ -52,8 +52,12 @@
           rustc = toolchain;
         }).buildPackage {
           src = ./.;
-          nativeBuildInputs = with pkgs; [ ] ++ min-pkgs;
-          buildInputs = with pkgs; [ ] ++ min-pkgs;
+          nativeBuildInputs = min-pkgs;
+          buildInputs = min-pkgs;
+          shellHook = ''
+            export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${
+              pkgs.lib.makeLibraryPath min-pkgs
+            }"'';
         };
 
         devShell = (naersk.lib.${system}.override {
@@ -64,7 +68,7 @@
           src = ./.;
           mode = "fmt";
           dontPatchELF = true;
-          nativeBuildInputs = with pkgs; [ ] ++ min-pkgs;
+          nativeBuildInputs = min-pkgs;
           shellHook = ''
             export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${
               pkgs.lib.makeLibraryPath min-pkgs
