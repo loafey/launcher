@@ -53,6 +53,7 @@
         }).buildPackage {
           src = ./.;
           nativeBuildInputs = with pkgs; [ ] ++ min-pkgs;
+          buildInputs = with pkgs; [ ] ++ min-pkgs;
         };
 
         devShell = (naersk.lib.${system}.override {
