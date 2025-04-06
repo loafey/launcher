@@ -1,7 +1,8 @@
 #![feature(try_trait_v2)]
 
-use egui::ScrollArea;
+use egui::{RichText, ScrollArea};
 use fuzzy_matcher::{FuzzyMatcher, skim::SkimMatcherV2};
+use shellish_parse::ParseOptions;
 use std::{
     collections::BTreeMap,
     env, fs,
@@ -21,6 +22,7 @@ struct Entry {
 }
 
 fn parse_entry<P: AsRef<Path>>(path: P) -> Vec<Entry> {
+    print!("{:?}", path.as_ref());
     if path.as_ref().is_dir() {
         let mut result = Vec::new();
 
@@ -33,10 +35,12 @@ fn parse_entry<P: AsRef<Path>>(path: P) -> Vec<Entry> {
             result.append(&mut parse_entry(p.path()));
         }
 
+        println!(" | recursive");
         return result;
     }
 
     let Ok(s) = fs::read_to_string(path).map(|s| s.leak()) else {
+        println!(" | failed to read");
         return Vec::new();
     };
 
@@ -52,19 +56,24 @@ fn parse_entry<P: AsRef<Path>>(path: P) -> Vec<Entry> {
         let value = value.trim();
 
         match key {
-            "Exec" => exec = Some(value),
-            "Icon" => icon = Some(value),
-            "Name" => name = Some(value),
+            "Exec" if exec.is_none() => exec = Some(value),
+            "Icon" if icon.is_none() => icon = Some(value),
+            "Name" if name.is_none() => name = Some(value),
             "Comment" => comment = Some(value),
-            "NoDisplay" if value == "true" => return Vec::new(),
+            "NoDisplay" if value == "true" => {
+                println!(" | no display");
+                return Vec::new();
+            }
             _ => continue,
         };
     }
 
     if matches!((name, exec, icon, comment), (None, None, None, None)) {
+        println!(" | no data");
         return Vec::new();
     }
 
+    println!(" | ok");
     vec![Entry {
         name,
         exec,
@@ -83,8 +92,9 @@ fn get_paths() -> Vec<PathBuf> {
         .flat_map(|s| s.split(':'))
         .map(PathBuf::from)
         .map(|p| p.join("applications"))
-        .filter(|p| p.exists() && p.is_dir())
+        .filter(|p| p.exists())
         .chain(home)
+        .chain(["/run/current-system/sw/share/applications".into()])
         .flat_map(fs::read_dir)
         .flatten()
         .flatten()
@@ -143,7 +153,16 @@ fn main() {
     });
 
     if let Ok(command) = command_recv.recv() {
-        let exit_status = Command::new("bitwarden").spawn().unwrap().wait();
+        let args = shellish_parse::parse(command, ParseOptions::default())
+            .unwrap()
+            .into_iter()
+            .filter(|p| !matches!(&p[..], "%U" | "%u"))
+            .collect::<Vec<_>>();
+        let exit_status = Command::new(&args[0])
+            .args(&args[1..])
+            .spawn()
+            .unwrap()
+            .wait();
         if let Ok(exit_status) = exit_status {
             exit(exit_status.code().unwrap_or_default())
         }
@@ -154,6 +173,7 @@ impl eframe::App for State {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let mut i = 0;
         while let Ok((k, t)) = self.recv.try_recv() {
+            println!("{t:?}");
             self.entries.insert(k, t);
             i += 1;
             if i >= 60 {
@@ -182,7 +202,11 @@ impl eframe::App for State {
                     for (i, (score, entry)) in filtered.into_iter().enumerate() {
                         ui.horizontal(|ui| {
                             let name = entry.name.unwrap_or("Missing name");
-                            ui.label(format!("{name}: {score:?}"));
+
+                            ui.label(
+                                RichText::new(format!("{:fill$}: ", score, fill = 4)).monospace(),
+                            );
+                            ui.label(RichText::new(name));
                             if i == 0 && open_app {
                                 if let Some(exec) = entry.exec {
                                     self.send.send(exec).unwrap();
