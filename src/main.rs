@@ -129,8 +129,8 @@ fn main() {
                 .with_always_on_top()
                 .with_taskbar(false)
                 .with_window_type(egui::X11WindowType::Dialog),
-            event_loop_builder: Some(Box::new(|event_loop_builder| {
-                event_loop_builder.with_any_thread(true);
+            event_loop_builder: Some(Box::new(|e| {
+                e.with_any_thread(true).with_wayland();
             })),
 
             ..Default::default()
