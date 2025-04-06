@@ -1,6 +1,6 @@
 #![feature(try_trait_v2)]
 
-use egui::{RichText, ScrollArea};
+use egui::{Event, Key, RichText, ScrollArea, TextEdit, Vec2};
 use fuzzy_matcher::{FuzzyMatcher, skim::SkimMatcherV2};
 use shellish_parse::ParseOptions;
 use std::{
@@ -22,7 +22,6 @@ struct Entry {
 }
 
 fn parse_entry<P: AsRef<Path>>(path: P) -> Vec<Entry> {
-    print!("{:?}", path.as_ref());
     if path.as_ref().is_dir() {
         let mut result = Vec::new();
 
@@ -35,12 +34,10 @@ fn parse_entry<P: AsRef<Path>>(path: P) -> Vec<Entry> {
             result.append(&mut parse_entry(p.path()));
         }
 
-        println!(" | recursive");
         return result;
     }
 
     let Ok(s) = fs::read_to_string(path).map(|s| s.leak()) else {
-        println!(" | failed to read");
         return Vec::new();
     };
 
@@ -60,20 +57,15 @@ fn parse_entry<P: AsRef<Path>>(path: P) -> Vec<Entry> {
             "Icon" if icon.is_none() => icon = Some(value),
             "Name" if name.is_none() => name = Some(value),
             "Comment" => comment = Some(value),
-            "NoDisplay" if value == "true" => {
-                println!(" | no display");
-                return Vec::new();
-            }
+            "NoDisplay" if value == "true" => return Vec::new(),
             _ => continue,
         };
     }
 
     if matches!((name, exec, icon, comment), (None, None, None, None)) {
-        println!(" | no data");
         return Vec::new();
     }
 
-    println!(" | ok");
     vec![Entry {
         name,
         exec,
@@ -130,14 +122,21 @@ fn main() {
 
     std::thread::spawn(move || {
         let options = eframe::NativeOptions {
-            viewport: egui::ViewportBuilder::default().with_inner_size([320.0, 240.0]),
+            viewport: egui::ViewportBuilder::default()
+                .with_inner_size([480.0, 320.0])
+                .with_titlebar_shown(false)
+                .with_decorations(false)
+                .with_always_on_top()
+                .with_taskbar(false)
+                .with_window_type(egui::X11WindowType::Dialog),
             event_loop_builder: Some(Box::new(|event_loop_builder| {
                 event_loop_builder.with_any_thread(true);
             })),
+
             ..Default::default()
         };
         eframe::run_native(
-            "My egui App",
+            "launcher",
             options,
             Box::new(|_| {
                 Ok(Box::new(State {
@@ -171,9 +170,10 @@ fn main() {
 
 impl eframe::App for State {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        catppuccin_egui::set_theme(ctx, catppuccin_egui::LATTE);
+        ctx.style_mut(|s| s.text_styles.iter_mut().for_each(|(_, t)| t.size = 18.0));
         let mut i = 0;
         while let Ok((k, t)) = self.recv.try_recv() {
-            println!("{t:?}");
             self.entries.insert(k, t);
             i += 1;
             if i >= 60 {
@@ -182,8 +182,22 @@ impl eframe::App for State {
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            let sl = ui.text_edit_singleline(&mut self.search);
-            let open_app = sl.lost_focus();
+            let mut exit = false;
+            ui.input(|i| {
+                for event in &i.events {
+                    if let Event::Key { key, .. } = event {
+                        exit = *key == Key::Escape;
+                    }
+                }
+            });
+            if exit {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+
+            let sl = ui.add_sized(Vec2::new(ui.available_width(), 14.0), {
+                TextEdit::singleline(&mut self.search).hint_text("Search...")
+            });
+            let open_app = sl.lost_focus() && !exit;
             sl.request_focus();
             ScrollArea::vertical()
                 .auto_shrink([false; 2])
@@ -204,7 +218,7 @@ impl eframe::App for State {
                             let name = entry.name.unwrap_or("Missing name");
 
                             ui.label(
-                                RichText::new(format!("{:fill$}: ", score, fill = 4)).monospace(),
+                                RichText::new(format!("{:fill$}:", score, fill = 3)).monospace(),
                             );
                             ui.label(RichText::new(name));
                             if i == 0 && open_app {

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+catppuccin-egui = { version = "5.5.0", default-features = false, features = ["egui31"] }
 eframe = { version = "0.31.1", features = ["wayland"] }
 egui = "0.31.1"
 fuzzy-matcher = "0.3.7"
