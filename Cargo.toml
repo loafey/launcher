@@ -4,7 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-eframe = "0.31.1"
+eframe = { version = "0.31.1", features = ["wayland"] }
 egui = "0.31.1"
 fuzzy-matcher = "0.3.7"
 xdir = "0.1.0"
+
+[dependencies.winit]
+default-features = false
+features = ["wayland"]
+version = "0.30.9"

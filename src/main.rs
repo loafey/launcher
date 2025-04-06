@@ -8,7 +8,9 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, exit},
     sync::mpsc::{Receiver, Sender, channel},
+    time::Duration,
 };
+use winit::platform::wayland::EventLoopBuilderExtWayland;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Entry {
@@ -116,27 +118,32 @@ fn main() {
         }
     });
 
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([320.0, 240.0]),
-        ..Default::default()
-    };
-    eframe::run_native(
-        "My egui App",
-        options,
-        Box::new(|_| {
-            Ok(Box::new(State {
-                search: String::new(),
-                recv,
-                send: command_sender,
-                entries: BTreeMap::new(),
-                matcher: SkimMatcherV2::default().ignore_case().smart_case(),
-            }))
-        }),
-    )
-    .unwrap();
+    std::thread::spawn(move || {
+        let options = eframe::NativeOptions {
+            viewport: egui::ViewportBuilder::default().with_inner_size([320.0, 240.0]),
+            event_loop_builder: Some(Box::new(|event_loop_builder| {
+                event_loop_builder.with_any_thread(true);
+            })),
+            ..Default::default()
+        };
+        eframe::run_native(
+            "My egui App",
+            options,
+            Box::new(|_| {
+                Ok(Box::new(State {
+                    search: String::new(),
+                    recv,
+                    send: command_sender,
+                    entries: BTreeMap::new(),
+                    matcher: SkimMatcherV2::default().ignore_case().smart_case(),
+                }))
+            }),
+        )
+        .unwrap();
+    });
 
     if let Ok(command) = command_recv.recv() {
-        let exit_status = Command::new(command).spawn().unwrap().wait();
+        let exit_status = Command::new("bitwarden").spawn().unwrap().wait();
         if let Ok(exit_status) = exit_status {
             exit(exit_status.code().unwrap_or_default())
         }

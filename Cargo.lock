@@ -1592,6 +1592,7 @@ dependencies = [
  "eframe",
  "egui",
  "fuzzy-matcher",
+ "winit",
  "xdir",
 ]
 
